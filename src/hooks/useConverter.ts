@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { convertImage } from "../lib/converter";
 
 export interface ConvertResult {
   previewUrl: string;
@@ -54,51 +55,38 @@ export function useConverter(): UseConverterReturn {
       setError(null);
 
       try {
-        const form = new FormData();
-        form.append("image", targetFile);
-        form.append("quality", String(q));
-        form.append("scale", String(s));
-
-        const res = await fetch("/api/convert", {
-          method: "POST",
-          body: form,
-          signal: controller.signal,
+        const resultData = await convertImage(targetFile, {
+          quality: q,
+          scale: s,
         });
 
-        if (!res.ok) {
-          let message = "Conversion failed";
-          try {
-            const json = await res.json();
-            message = json.error || message;
-          } catch {
-            // Non-JSON response (proxy error, etc.)
-          }
-          throw new Error(message);
-        }
-
-        const blob = await res.blob();
+        if (controller.signal.aborted) return;
 
         if (resultBlobUrl.current) {
           URL.revokeObjectURL(resultBlobUrl.current);
         }
+        const blob = new Blob([resultData.buffer], { type: "image/webp" });
         const previewUrl = URL.createObjectURL(blob);
         resultBlobUrl.current = previewUrl;
 
         setResult({
           previewUrl,
-          originalSize: Number(res.headers.get("X-Original-Size")),
-          convertedSize: Number(res.headers.get("X-Converted-Size")),
-          originalWidth: Number(res.headers.get("X-Original-Width")),
-          originalHeight: Number(res.headers.get("X-Original-Height")),
-          convertedWidth: Number(res.headers.get("X-Converted-Width")),
-          convertedHeight: Number(res.headers.get("X-Converted-Height")),
-          originalFormat: res.headers.get("X-Original-Format") || "unknown",
+          originalSize: resultData.originalSize,
+          convertedSize: resultData.convertedSize,
+          originalWidth: resultData.originalWidth,
+          originalHeight: resultData.originalHeight,
+          convertedWidth: resultData.convertedWidth,
+          convertedHeight: resultData.convertedHeight,
+          originalFormat: resultData.originalFormat,
         });
       } catch (err) {
-        if (err instanceof Error && err.name === "AbortError") return;
-        setError(err instanceof Error ? err.message : "Unknown error");
+        // Check if aborted manually since we don't pass signal to convertImage yet
+        if (controller.signal.aborted) return;
+
+        console.error("Conversion failed:", err);
+        setError("画像の変換に失敗しました。");
       } finally {
-        if (isMounted.current) setLoading(false);
+        if (isMounted.current && !controller.signal.aborted) setLoading(false);
       }
     },
     []
