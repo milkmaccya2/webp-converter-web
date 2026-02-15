@@ -37,17 +37,5 @@
       "semicolons": "always",
       "arrowParentheses": "always"
     }
-  },
-  "overrides": [
-    {
-      "includes": ["src/components/UploadArea.tsx"],
-      "linter": {
-        "rules": {
-          "a11y": {
-            "useSemanticElements": "off"
-          }
-        }
-      }
-    }
-  ]
+  }
 }

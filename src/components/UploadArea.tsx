@@ -58,17 +58,13 @@ export function UploadArea({ onFile }: UploadAreaProps) {
     [handleFile]
   );
 
-  const onKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === "Enter" || e.key === " ") {
-      e.preventDefault();
-      inputRef.current?.click();
-    }
-  }, []);
+
 
   return (
-    <div
+    <button
+      type="button"
       className={cn(
-        "relative flex flex-col items-center justify-center gap-5 p-12 py-16 cursor-pointer select-none transition-all duration-300 border-2 border-dashed rounded-xl bg-card hover:bg-accent/50 hover:border-primary/50 shadow-sm hover:shadow-md",
+        "relative flex flex-col items-center justify-center gap-5 p-12 py-16 cursor-pointer select-none transition-all duration-300 border-2 border-dashed rounded-xl bg-card hover:bg-accent/50 hover:border-primary/50 shadow-sm hover:shadow-md w-full",
         isDragOver
           ? "bg-accent/10 border-primary shadow-[0_0_0_4px_rgba(var(--primary),0.1)] scale-[1.01]"
           : "border-border"
@@ -77,9 +73,6 @@ export function UploadArea({ onFile }: UploadAreaProps) {
       onDragLeave={onDragLeave}
       onDrop={onDrop}
       onClick={() => inputRef.current?.click()}
-      onKeyDown={onKeyDown}
-      role="button"
-      tabIndex={0}
       aria-label="Upload image — click or drag and drop"
     >
       <input
@@ -87,7 +80,7 @@ export function UploadArea({ onFile }: UploadAreaProps) {
         type="file"
         accept={ACCEPTED_TYPES.join(",")}
         onChange={onInputChange}
-        className="absolute w-px h-px opacity-0 pointer-events-none"
+        className="hidden"
         aria-hidden="true"
         tabIndex={-1}
       />
@@ -133,6 +126,6 @@ export function UploadArea({ onFile }: UploadAreaProps) {
           </Badge>
         ))}
       </div>
-    </div>
+    </button>
   );
 }
