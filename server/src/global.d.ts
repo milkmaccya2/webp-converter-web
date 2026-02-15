@@ -3,6 +3,15 @@ declare module "*.wasm" {
 	export default module;
 }
 
+declare module "@jsquash/png/codec/squoosh_png_bg.wasm" {
+	const module: WebAssembly.Module;
+	export default module;
+}
+
+declare module "@jsquash/resize/lib/resize/pkg/squoosh_resize_bg.wasm" {
+	const module: WebAssembly.Module;
+	export default module;
+}
 declare module "@jsquash/jpeg/decode.js" {
 	export function init(wasm: ArrayBuffer | WebAssembly.Module): Promise<void>;
 	export default function decode(data: ArrayBuffer): Promise<{
@@ -68,7 +77,3 @@ declare module "@jsquash/resize" {
 		height: number;
 	}>;
 }
-
-type Bindings = {
-	ASSETS: { fetch: (request: Request) => Promise<Response> };
-};

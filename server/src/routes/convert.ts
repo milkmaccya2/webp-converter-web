@@ -28,30 +28,36 @@ const ALLOWED_MIME_TYPES = new Set([
 
 const convertRoute = new Hono();
 
-// Initialize modules
-let initialized = false;
+// Initialize modules (Singleton Pattern)
+let initPromise: Promise<void> | null = null;
 async function initModules() {
-	if (initialized) return;
-	console.log("Initializing Wasm modules...");
-	try {
-		console.log("Initializing JPEG...");
-		await decodeJpeg.init(jpegWasm);
-		console.log("Initializing PNG...");
-		await decodePng.init(pngWasm);
-		console.log("Initializing WebP Dec...");
-		await decodeWebp.init(webpDecWasm);
-		console.log("Initializing AVIF...");
-		await decodeAvif.init(avifWasm);
-		console.log("Initializing WebP Enc...");
-		await encodeWebp.init(webpEncWasm);
-		console.log("Initializing Resize...");
-		await resize.initResize(resizeWasm);
-		console.log("All modules initialized");
-		initialized = true;
-	} catch (e) {
-		console.error("Error initializing modules", e);
-		throw e;
-	}
+	if (initPromise) return initPromise;
+
+	initPromise = (async () => {
+		console.log("Initializing Wasm modules...");
+		try {
+			console.log("Initializing JPEG...");
+			await decodeJpeg.init(jpegWasm);
+			console.log("Initializing PNG...");
+			await decodePng.init(pngWasm);
+			console.log("Initializing WebP Dec...");
+			await decodeWebp.init(webpDecWasm);
+			console.log("Initializing AVIF...");
+			await decodeAvif.init(avifWasm);
+			console.log("Initializing WebP Enc...");
+			await encodeWebp.init(webpEncWasm);
+			console.log("Initializing Resize...");
+			await resize.initResize(resizeWasm);
+			console.log("All modules initialized");
+		} catch (e) {
+			console.error("Error initializing modules", e);
+			// Reset promise on failure so we can retry
+			initPromise = null;
+			throw e;
+		}
+	})();
+
+	return initPromise;
 }
 
 convertRoute.post("/convert", async (c) => {
@@ -101,15 +107,26 @@ convertRoute.post("/convert", async (c) => {
 		meta.width = imageData.width;
 		meta.height = imageData.height;
 
-		// 2. Resize if needed
-		const newWidth = Math.min(
-			Math.round(meta.width * (scale / 100)),
-			MAX_OUTPUT_DIMENSION,
-		);
-		const newHeight = Math.round(meta.height * (newWidth / meta.width));
+		// 2. Resize and Validate Dimensions
+		// Calculate target dimensions based on scale
+		let newWidth = Math.round(meta.width * (scale / 100));
+		let newHeight = Math.round(meta.height * (scale / 100));
 
-		// Only resize if the scale is different or new dimensions are valid
-		if (scale !== 100 || newWidth !== meta.width) {
+		// Constrain dimensions to MAX_OUTPUT_DIMENSION while maintaining aspect ratio
+		if (newWidth > MAX_OUTPUT_DIMENSION || newHeight > MAX_OUTPUT_DIMENSION) {
+			if (newWidth >= newHeight) {
+				// Width is the larger dimension (or equal)
+				newHeight = Math.round(newHeight * (MAX_OUTPUT_DIMENSION / newWidth));
+				newWidth = MAX_OUTPUT_DIMENSION;
+			} else {
+				// Height is the larger dimension
+				newWidth = Math.round(newWidth * (MAX_OUTPUT_DIMENSION / newHeight));
+				newHeight = MAX_OUTPUT_DIMENSION;
+			}
+		}
+
+		// Only resize if necessary (dimensions changed)
+		if (newWidth !== meta.width || newHeight !== meta.height) {
 			imageData = await resize.default(imageData, {
 				width: newWidth,
 				height: newHeight,
