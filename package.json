@@ -1,15 +1,18 @@
 {
-  "name": "webp-converter-web",
-  "private": true,
-  "workspaces": ["client", "server"],
-  "scripts": {
-    "dev": "concurrently \"npm run dev -w server\" \"npm run dev -w client\"",
-    "build": "npm run build -w client && npm run build -w server",
-    "start": "npm run start -w server",
-    "test": "npm run test -w server"
-  },
-  "devDependencies": {
-    "concurrently": "^9.1.2",
-    "typescript": "^5.7.3"
-  }
+	"name": "webp-converter-web",
+	"private": true,
+	"workspaces": [
+		"client",
+		"server"
+	],
+	"scripts": {
+		"dev": "concurrently \"npm run dev -w server\" \"npm run dev -w client\"",
+		"build": "npm run build -w client",
+		"deploy": "npm run build && npm run deploy -w server",
+		"test": "npm run test -w server"
+	},
+	"devDependencies": {
+		"concurrently": "^9.1.2",
+		"typescript": "^5.7.3"
+	}
 }
