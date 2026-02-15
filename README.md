@@ -42,7 +42,7 @@ npm run build
 ```
 
 ## デプロイ
-Cloudflare Pages へのデプロイ設定が含まれています。
+Cloudflare Workers へのデプロイ設定が含まれています。
 
 ```bash
 npm run deploy

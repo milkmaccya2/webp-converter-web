@@ -12,21 +12,22 @@ import * as decodeWebp from "@jsquash/webp/decode.js";
 import * as encodeWebp from "@jsquash/webp/encode.js";
 
 const MAX_OUTPUT_DIMENSION = 8000;
+const MAX_INPUT_DIMENSION = 16384;
 
 export interface ConversionOptions {
-	quality: number;
-	scale: number;
+  quality: number;
+  scale: number;
 }
 
 export interface ConversionResult {
-	buffer: ArrayBuffer;
-	originalWidth: number;
-	originalHeight: number;
-	convertedWidth: number;
-	convertedHeight: number;
-	originalSize: number;
-	convertedSize: number;
-	originalFormat: string;
+  buffer: ArrayBuffer;
+  originalWidth: number;
+  originalHeight: number;
+  convertedWidth: number;
+  convertedHeight: number;
+  originalSize: number;
+  convertedSize: number;
+  originalFormat: string;
 }
 
 // Initialize modules (Singleton Pattern)
@@ -34,98 +35,125 @@ export interface ConversionResult {
 let initPromise: Promise<void> | null = null;
 
 export async function initModules() {
-	if (initPromise) return initPromise;
+  if (initPromise) return initPromise;
 
-	initPromise = (async () => {
-		try {
-			await Promise.all([
-				decodeJpeg.init(jpegWasm),
-				decodePng.init(pngWasm),
-				decodeWebp.init(webpDecWasm),
-				decodeAvif.init(avifWasm),
-				encodeWebp.init(webpEncWasm),
-				resize.initResize(resizeWasm),
-			]);
-		} catch (e) {
-			console.error("Error initializing Wasm modules", e);
-			initPromise = null;
-			throw e;
-		}
-	})();
+  initPromise = (async () => {
+    try {
+      await Promise.all([
+        decodeJpeg.init(jpegWasm),
+        decodePng.init(pngWasm),
+        decodeWebp.init(webpDecWasm),
+        decodeAvif.init(avifWasm),
+        encodeWebp.init(webpEncWasm),
+        resize.initResize(resizeWasm),
+      ]);
+    } catch (e) {
+      console.error("Error initializing Wasm modules", e);
+      initPromise = null;
+      throw e;
+    }
+  })();
 
-	return initPromise;
+  return initPromise;
 }
 
 export async function convertImage(
-	file: File,
-	options: ConversionOptions = { quality: 80, scale: 100 },
+  file: File,
+  options: ConversionOptions = { quality: 80, scale: 100 }
 ): Promise<ConversionResult> {
-	await initModules();
+  // Security check: Validate image dimensions before processing to prevent decompression bombs
+  try {
+    const bitmap = await createImageBitmap(file);
+    const { width, height } = bitmap;
+    bitmap.close(); // Release memory immediately
 
-	const buffer = await file.arrayBuffer();
-	let imageData: ImageData;
-	const meta = { width: 0, height: 0, format: file.type };
+    if (width > MAX_INPUT_DIMENSION || height > MAX_INPUT_DIMENSION) {
+      throw new Error(
+        `Image dimensions (${width}x${height}) exceed the maximum allowed size of ${MAX_INPUT_DIMENSION}x${MAX_INPUT_DIMENSION}px.`
+      );
+    }
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message.includes("exceed the maximum")
+    ) {
+      throw error;
+    }
+    // If createImageBitmap fails (e.g. invalid format), we let the specific decoders handle it later
+    // or re-throw if it's critical. For now, we proceed to try decoding if it's just a format issue,
+    // but if it was a dimension error, we stopped.
+    // Actually, if createImageBitmap fails, it might mean the image is invalid or format not supported by browser.
+    // We'll log and continue to let Wasm decoders try, as they might support formats the browser doesn't?
+    // But createImageBitmap supports most formats. Let's just log warning.
+    console.warn("Could not pre-validate image dimensions:", error);
+  }
 
-	try {
-		switch (file.type) {
-			case "image/jpeg":
-				imageData = await decodeJpeg.default(buffer);
-				break;
-			case "image/png":
-				imageData = await decodePng.default(buffer);
-				break;
-			case "image/webp":
-				imageData = await decodeWebp.default(buffer);
-				break;
-			case "image/avif":
-				imageData = await decodeAvif.default(buffer);
-				break;
-			default:
-				throw new Error(`Unsupported format: ${file.type}`);
-		}
-	} catch (error) {
-		throw new Error(`Failed to decode image: ${(error as Error).message}`);
-	}
+  await initModules();
 
-	meta.width = imageData.width;
-	meta.height = imageData.height;
+  const buffer = await file.arrayBuffer();
+  let imageData: ImageData;
+  const meta = { width: 0, height: 0, format: file.type };
 
-	// Calculate target dimensions
-	let newWidth = Math.round(meta.width * (options.scale / 100));
-	let newHeight = Math.round(meta.height * (options.scale / 100));
+  try {
+    switch (file.type) {
+      case "image/jpeg":
+        imageData = await decodeJpeg.default(buffer);
+        break;
+      case "image/png":
+        imageData = await decodePng.default(buffer);
+        break;
+      case "image/webp":
+        imageData = await decodeWebp.default(buffer);
+        break;
+      case "image/avif":
+        imageData = await decodeAvif.default(buffer);
+        break;
+      default:
+        throw new Error(`Unsupported format: ${file.type}`);
+    }
+  } catch (error) {
+    throw new Error(`Failed to decode image: ${(error as Error).message}`);
+  }
 
-	// Constrain dimensions
-	if (newWidth > MAX_OUTPUT_DIMENSION || newHeight > MAX_OUTPUT_DIMENSION) {
-		if (newWidth >= newHeight) {
-			newHeight = Math.round(newHeight * (MAX_OUTPUT_DIMENSION / newWidth));
-			newWidth = MAX_OUTPUT_DIMENSION;
-		} else {
-			newWidth = Math.round(newWidth * (MAX_OUTPUT_DIMENSION / newHeight));
-			newHeight = MAX_OUTPUT_DIMENSION;
-		}
-	}
+  meta.width = imageData.width;
+  meta.height = imageData.height;
 
-	// Resize if necessary
-	if (newWidth !== meta.width || newHeight !== meta.height) {
-		imageData = await resize.default(imageData, {
-			width: newWidth,
-			height: newHeight,
-		});
-	}
+  // Calculate target dimensions
+  let newWidth = Math.round(meta.width * (options.scale / 100));
+  let newHeight = Math.round(meta.height * (options.scale / 100));
 
-	// Encode to WebP
-	const webpBuffer = await encodeWebp.default(imageData, {
-		quality: options.quality,
-	});
+  // Constrain dimensions
+  if (newWidth > MAX_OUTPUT_DIMENSION || newHeight > MAX_OUTPUT_DIMENSION) {
+    if (newWidth >= newHeight) {
+      newHeight = Math.round(newHeight * (MAX_OUTPUT_DIMENSION / newWidth));
+      newWidth = MAX_OUTPUT_DIMENSION;
+    } else {
+      newWidth = Math.round(newWidth * (MAX_OUTPUT_DIMENSION / newHeight));
+      newHeight = MAX_OUTPUT_DIMENSION;
+    }
+  }
 
-	return {
-		buffer: webpBuffer,
-		originalWidth: meta.width,
-		originalHeight: meta.height,
-		convertedWidth: imageData.width,
-		convertedHeight: imageData.height,
-		originalSize: file.size,
-		convertedSize: webpBuffer.byteLength,
-		originalFormat: file.type,
-	};
+  // Resize if necessary
+  if (newWidth !== meta.width || newHeight !== meta.height) {
+    imageData = await resize.default(imageData, {
+      width: newWidth,
+      height: newHeight,
+    });
+  }
+
+  // Encode to WebP
+  const webpBuffer = await encodeWebp.default(imageData, {
+    quality: options.quality,
+  });
+
+  return {
+    buffer: webpBuffer,
+    originalWidth: meta.width,
+    originalHeight: meta.height,
+    convertedWidth: imageData.width,
+    convertedHeight: imageData.height,
+    originalSize: file.size,
+    convertedSize: webpBuffer.byteLength,
+    originalFormat: file.type,
+  };
 }
