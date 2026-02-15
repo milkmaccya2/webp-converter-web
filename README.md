@@ -1,5 +1,7 @@
 # WebP Converter Web
 
+[webp.milkmaccya.com](https://webp.milkmaccya.com) でホストされています。
+
 クライアントサイド（ブラウザ）で完結する画像変換アプリケーションです。
 WebAssembly (`@jsquash`) を使用して、サーバーを介さずに画像を WebP 形式に変換・リサイズします。
 
