@@ -151,10 +151,7 @@ convertRoute.post("/convert", async (c) => {
 		});
 	} catch (err) {
 		console.error("Image conversion failed:", err);
-		return c.json(
-			{ error: "Failed to process image", details: String(err) },
-			500,
-		);
+		return c.json({ error: "Failed to process image" }, 500);
 	}
 });
 
