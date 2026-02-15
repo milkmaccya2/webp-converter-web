@@ -180,7 +180,7 @@ export default function App() {
       {/* Footer */}
       <footer className="py-8 px-6 text-center border-t bg-muted/20">
         <p className="text-xs text-muted-foreground">
-          変換はアプリサーバー上でのみ行われます。画像が保存されたり共有されることはありません。
+          変換はブラウザ上でのみ行われます。画像がサーバーに送信されることはありません。
         </p>
       </footer>
     </div>
