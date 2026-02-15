@@ -1,77 +1,145 @@
+// Import Wasm modules directly
+import avifWasm from "@jsquash/avif/codec/dec/avif_dec.wasm";
+import * as decodeAvif from "@jsquash/avif/decode.js";
+import jpegWasm from "@jsquash/jpeg/codec/dec/mozjpeg_dec.wasm";
+import * as decodeJpeg from "@jsquash/jpeg/decode.js";
+import pngWasm from "@jsquash/png/codec/squoosh_png_bg.wasm";
+import * as decodePng from "@jsquash/png/decode.js";
+import * as resize from "@jsquash/resize";
+import resizeWasm from "@jsquash/resize/lib/resize/pkg/squoosh_resize_bg.wasm";
+import webpDecWasm from "@jsquash/webp/codec/dec/webp_dec.wasm";
+import webpEncWasm from "@jsquash/webp/codec/enc/webp_enc.wasm";
+import * as decodeWebp from "@jsquash/webp/decode.js";
+import * as encodeWebp from "@jsquash/webp/encode.js";
 import { Hono } from "hono";
-import sharp from "sharp";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 const MAX_OUTPUT_DIMENSION = 8000;
 
 const ALLOWED_MIME_TYPES = new Set([
-  "image/jpeg",
-  "image/png",
-  "image/gif",
-  "image/webp",
-  "image/avif",
-  "image/tiff",
+	"image/jpeg",
+	"image/png",
+	"image/webp",
+	"image/avif",
 ]);
+
+// Polyfill ImageData for Cloudflare Workers
+// (Moved to polyfills.ts)
 
 const convertRoute = new Hono();
 
+// Initialize modules
+let initialized = false;
+async function initModules() {
+	if (initialized) return;
+	console.log("Initializing Wasm modules...");
+	try {
+		console.log("Initializing JPEG...");
+		await decodeJpeg.init(jpegWasm);
+		console.log("Initializing PNG...");
+		await decodePng.init(pngWasm);
+		console.log("Initializing WebP Dec...");
+		await decodeWebp.init(webpDecWasm);
+		console.log("Initializing AVIF...");
+		await decodeAvif.init(avifWasm);
+		console.log("Initializing WebP Enc...");
+		await encodeWebp.init(webpEncWasm);
+		console.log("Initializing Resize...");
+		await resize.initResize(resizeWasm);
+		console.log("All modules initialized");
+		initialized = true;
+	} catch (e) {
+		console.error("Error initializing modules", e);
+		throw e;
+	}
+}
+
 convertRoute.post("/convert", async (c) => {
-  const body = await c.req.parseBody();
-  const file = body.image;
+	const body = await c.req.parseBody();
+	const file = body.image;
 
-  if (!(file instanceof File)) {
-    return c.json({ error: "No image file provided" }, 400);
-  }
+	if (!(file instanceof File)) {
+		return c.json({ error: "No image file provided" }, 400);
+	}
 
-  if (file.size > MAX_FILE_SIZE) {
-    return c.json({ error: "File size exceeds 10MB limit" }, 400);
-  }
+	if (file.size > MAX_FILE_SIZE) {
+		return c.json({ error: "File size exceeds 10MB limit" }, 400);
+	}
 
-  if (!ALLOWED_MIME_TYPES.has(file.type)) {
-    return c.json({ error: "Unsupported file type" }, 400);
-  }
+	if (!ALLOWED_MIME_TYPES.has(file.type)) {
+		return c.json({ error: "Unsupported file type" }, 400);
+	}
 
-  const quality = Math.min(100, Math.max(1, Number(body.quality) || 80));
-  const scale = Math.min(200, Math.max(1, Number(body.scale) || 100));
+	const quality = Math.min(100, Math.max(1, Number(body.quality) || 80));
+	const scale = Math.min(200, Math.max(1, Number(body.scale) || 100));
 
-  try {
-    const buffer = Buffer.from(await file.arrayBuffer());
+	try {
+		await initModules();
+		const buffer = await file.arrayBuffer();
 
-    const image = sharp(buffer);
-    const metadata = await image.metadata();
+		// 1. Decode
+		let imageData;
+		const meta = { width: 0, height: 0, format: file.type };
 
-    if (!metadata.width || !metadata.height) {
-      return c.json({ error: "Unable to read image dimensions" }, 400);
-    }
+		switch (file.type) {
+			case "image/jpeg":
+				imageData = await decodeJpeg.default(buffer);
+				break;
+			case "image/png":
+				imageData = await decodePng.default(buffer);
+				break;
+			case "image/webp":
+				imageData = await decodeWebp.default(buffer);
+				break;
+			case "image/avif":
+				imageData = await decodeAvif.default(buffer);
+				break;
+			default:
+				throw new Error("Unsupported format for decoding");
+		}
 
-    const newWidth = Math.min(
-      Math.round(metadata.width * (scale / 100)),
-      MAX_OUTPUT_DIMENSION
-    );
+		meta.width = imageData.width;
+		meta.height = imageData.height;
 
-    const converted = await image
-      .resize({ width: newWidth, withoutEnlargement: scale <= 100 })
-      .webp({ quality })
-      .toBuffer({ resolveWithObject: true });
+		// 2. Resize if needed
+		const newWidth = Math.min(
+			Math.round(meta.width * (scale / 100)),
+			MAX_OUTPUT_DIMENSION,
+		);
+		const newHeight = Math.round(meta.height * (newWidth / meta.width));
 
-    // biome-ignore lint/suspicious/noExplicitAny: sharp buffer is compatible
-    return new Response(converted.data as any, {
-      headers: {
-        "Content-Type": "image/webp",
-        "Content-Length": String(converted.data.length),
-        "X-Original-Width": String(metadata.width),
-        "X-Original-Height": String(metadata.height),
-        "X-Converted-Width": String(converted.info.width),
-        "X-Converted-Height": String(converted.info.height),
-        "X-Original-Size": String(file.size),
-        "X-Converted-Size": String(converted.data.length),
-        "X-Original-Format": metadata.format || "unknown",
-      },
-    });
-  } catch (err) {
-    console.error("Image conversion failed:", err);
-    return c.json({ error: "Failed to process image" }, 500);
-  }
+		// Only resize if the scale is different or new dimensions are valid
+		if (scale !== 100 || newWidth !== meta.width) {
+			imageData = await resize.default(imageData, {
+				width: newWidth,
+				height: newHeight,
+			});
+		}
+
+		// 3. Encode to WebP
+		const webpBuffer = await encodeWebp.default(imageData, { quality });
+
+		return new Response(webpBuffer, {
+			headers: {
+				"Content-Type": "image/webp",
+				"Content-Length": String(webpBuffer.byteLength),
+				"X-Original-Width": String(meta.width),
+				"X-Original-Height": String(meta.height),
+				"X-Converted-Width": String(imageData.width),
+				"X-Converted-Height": String(imageData.height),
+				"X-Original-Size": String(file.size),
+				"X-Converted-Size": String(webpBuffer.byteLength),
+				"X-Original-Format": meta.format || "unknown",
+			},
+		});
+	} catch (err) {
+		console.error("Image conversion failed:", err);
+		return c.json(
+			{ error: "Failed to process image", details: String(err) },
+			500,
+		);
+	}
 });
 
 export { convertRoute };
+// Trigger rebuild 2
