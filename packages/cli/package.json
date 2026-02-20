@@ -1,0 +1,63 @@
+{
+  "name": "webp-convert",
+  "version": "0.1.0",
+  "description": "CLI tool to batch convert images to WebP format",
+  "type": "module",
+  "bin": {
+    "webp-convert": "dist/index.js"
+  },
+  "main": "./dist/index.js",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "build:watch": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "keywords": [
+    "webp",
+    "convert",
+    "image",
+    "cli",
+    "sharp",
+    "batch",
+    "jpeg",
+    "png",
+    "avif"
+  ],
+  "author": "milkmaccya2",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/milkmaccya2/webp-converter-web.git",
+    "directory": "packages/cli"
+  },
+  "homepage": "https://github.com/milkmaccya2/webp-converter-web/tree/master/packages/cli#readme",
+  "bugs": {
+    "url": "https://github.com/milkmaccya2/webp-converter-web/issues"
+  },
+  "dependencies": {
+    "commander": "^12.0.0",
+    "fast-glob": "^3.3.0",
+    "sharp": "^0.33.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "~5.9.3",
+    "vitest": "^3.2.4"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

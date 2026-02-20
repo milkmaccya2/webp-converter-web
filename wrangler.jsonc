@@ -2,7 +2,7 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "webp-converter-web",
   "assets": {
-    "directory": "./dist"
+    "directory": "./packages/web/dist"
   },
   "compatibility_date": "2026-02-15"
 }
