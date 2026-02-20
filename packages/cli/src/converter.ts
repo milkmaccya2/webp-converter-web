@@ -90,24 +90,18 @@ export async function convertFiles(
     );
   }
 
-  // 全ファイルを並列変換し、結果を入力順に収集する
-  const settlements = await Promise.allSettled(
-    inputPaths.map((inputPath) => convertSingleFile(inputPath, options))
-  );
-
   let successCount = 0;
   let failCount = 0;
   const originalSizes: number[] = [];
   const convertedSizes: number[] = [];
 
-  for (let i = 0; i < settlements.length; i++) {
-    const settlement = settlements[i];
+  for (let i = 0; i < inputPaths.length; i++) {
     const inputPath = inputPaths[i];
     const prefix = isBatch ? `[${i + 1}/${inputPaths.length}] ` : "";
     const label = dryRun ? "DRY RUN" : "Converting";
 
-    if (settlement.status === "fulfilled") {
-      const result = settlement.value;
+    try {
+      const result = await convertSingleFile(inputPath, options);
       const savings = formatPercent(result.originalSize, result.convertedSize);
       const sizeInfo = `${formatBytes(result.originalSize)} → ${formatBytes(result.convertedSize)} (${savings})`;
 
@@ -123,9 +117,9 @@ export async function convertFiles(
       originalSizes.push(result.originalSize);
       convertedSizes.push(result.convertedSize);
       successCount++;
-    } else {
+    } catch (err) {
       console.log(`${prefix}${label} ${path.basename(inputPath)}... Failed`);
-      console.error(`  Error: ${settlement.reason.message}`);
+      console.error(`  Error: ${(err as Error).message}`);
       failCount++;
     }
   }
