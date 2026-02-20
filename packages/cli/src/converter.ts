@@ -26,7 +26,7 @@ export async function convertSingleFile(
   inputPath: string,
   options: ConvertOptions
 ): Promise<ConvertResult> {
-  const outputPath = resolveOutputPath(inputPath, options.output);
+  const outputPath = await resolveOutputPath(inputPath, options.output);
   const originalSize = (await fs.stat(inputPath)).size;
 
   const image = sharp(inputPath);
@@ -59,7 +59,8 @@ export async function convertSingleFile(
   } else {
     await fs.mkdir(path.dirname(outputPath), { recursive: true });
     const info = await pipeline.toFile(outputPath);
-    convertedSize = (await fs.stat(outputPath)).size;
+    // info.size は toFile() が返す書き込み済みバイト数
+    convertedSize = info.size;
     convertedWidth = info.width;
     convertedHeight = info.height;
   }
@@ -84,36 +85,36 @@ export async function convertFiles(
   const dryRun = options.dryRun ?? false;
 
   if (isBatch && options.output?.endsWith(".webp")) {
-    console.error(
-      "Error: output must be a directory when converting multiple files"
+    throw new Error(
+      "output must be a directory when converting multiple files"
     );
-    process.exit(1);
   }
+
+  // 全ファイルを並列変換し、結果を入力順に収集する
+  const settlements = await Promise.allSettled(
+    inputPaths.map((inputPath) => convertSingleFile(inputPath, options))
+  );
 
   let successCount = 0;
   let failCount = 0;
   const originalSizes: number[] = [];
   const convertedSizes: number[] = [];
 
-  for (let i = 0; i < inputPaths.length; i++) {
+  for (let i = 0; i < settlements.length; i++) {
+    const settlement = settlements[i];
     const inputPath = inputPaths[i];
     const prefix = isBatch ? `[${i + 1}/${inputPaths.length}] ` : "";
     const label = dryRun ? "DRY RUN" : "Converting";
 
-    try {
-      process.stdout.write(
-        `${prefix}${label} ${path.basename(inputPath)}...`
-      );
-      const result = await convertSingleFile(inputPath, options);
+    if (settlement.status === "fulfilled") {
+      const result = settlement.value;
       const savings = formatPercent(result.originalSize, result.convertedSize);
       const sizeInfo = `${formatBytes(result.originalSize)} → ${formatBytes(result.convertedSize)} (${savings})`;
 
-      console.log(" Done");
-      if (dryRun) {
-        console.log(`  Would write: ${result.outputPath}`);
-      } else {
-        console.log(`  Output: ${result.outputPath}`);
-      }
+      console.log(`${prefix}${label} ${path.basename(inputPath)}... Done`);
+      console.log(
+        `  ${dryRun ? "Would write" : "Output"}: ${result.outputPath}`
+      );
       console.log(`  Size:   ${sizeInfo}`);
       console.log(
         `  Dims:   ${result.originalWidth}x${result.originalHeight} → ${result.convertedWidth}x${result.convertedHeight}`
@@ -122,9 +123,9 @@ export async function convertFiles(
       originalSizes.push(result.originalSize);
       convertedSizes.push(result.convertedSize);
       successCount++;
-    } catch (err) {
-      console.log(" Failed");
-      console.error(`  Error: ${(err as Error).message}`);
+    } else {
+      console.log(`${prefix}${label} ${path.basename(inputPath)}... Failed`);
+      console.error(`  Error: ${settlement.reason.message}`);
       failCount++;
     }
   }
@@ -142,7 +143,10 @@ export async function convertFiles(
   }
 }
 
-function resolveOutputPath(inputPath: string, outputOption?: string): string {
+async function resolveOutputPath(
+  inputPath: string,
+  outputOption?: string
+): Promise<string> {
   const baseName =
     path.basename(inputPath, path.extname(inputPath)) + ".webp";
 
@@ -150,9 +154,19 @@ function resolveOutputPath(inputPath: string, outputOption?: string): string {
     return path.join(path.dirname(inputPath), baseName);
   }
 
-  if (!outputOption.endsWith(".webp")) {
-    return path.join(outputOption, baseName);
+  if (outputOption.endsWith(".webp")) {
+    return outputOption;
   }
 
-  return outputOption;
+  // 既存ディレクトリかどうかを確認してからパスを決定する
+  try {
+    const stat = await fs.stat(outputOption);
+    if (stat.isDirectory()) {
+      return path.join(outputOption, baseName);
+    }
+  } catch {
+    // 存在しないパス → ディレクトリとして作成する
+  }
+
+  return path.join(outputOption, baseName);
 }

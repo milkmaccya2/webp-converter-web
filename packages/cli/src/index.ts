@@ -35,13 +35,18 @@ program
       process.exit(1);
     }
 
-    await convertFiles(inputPaths, {
-      quality,
-      scale,
-      output: options.output,
-      lossless: options.lossless ?? false,
-      dryRun: options.dryRun ?? false,
-    });
+    try {
+      await convertFiles(inputPaths, {
+        quality,
+        scale,
+        output: options.output,
+        lossless: options.lossless ?? false,
+        dryRun: options.dryRun ?? false,
+      });
+    } catch (err) {
+      console.error(`Error: ${(err as Error).message}`);
+      process.exit(1);
+    }
   });
 
 program.parse();

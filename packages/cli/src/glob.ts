@@ -14,6 +14,11 @@ const SUPPORTED_EXTENSIONS = new Set([
   ".webp",
 ]);
 
+// fast-glob に渡す拡張子パターン（先頭の . を除去）
+const EXT_PATTERN = [...SUPPORTED_EXTENSIONS]
+  .map((e) => e.slice(1))
+  .join(",");
+
 export async function resolveInputPaths(inputs: string[]): Promise<string[]> {
   const seen = new Set<string>();
   const results: string[] = [];
@@ -32,7 +37,7 @@ export async function resolveInputPaths(inputs: string[]): Promise<string[]> {
 }
 
 async function resolveSingleInput(input: string): Promise<string[]> {
-  // ディレクトリ指定
+  // ディレクトリ指定 → fast-glob でサブディレクトリも再帰的に探索
   try {
     const stat = await fs.stat(input);
     if (stat.isDirectory()) {
@@ -55,17 +60,10 @@ async function resolveSingleInput(input: string): Promise<string[]> {
 }
 
 async function scanDirectory(dir: string): Promise<string[]> {
-  const entries = await fs.readdir(dir, { withFileTypes: true });
-  const results: string[] = [];
-
-  for (const entry of entries) {
-    if (entry.isFile()) {
-      const ext = path.extname(entry.name).toLowerCase();
-      if (SUPPORTED_EXTENSIONS.has(ext)) {
-        results.push(path.resolve(dir, entry.name));
-      }
-    }
-  }
-
-  return results.sort();
+  const files = await fg(`**/*.{${EXT_PATTERN}}`, {
+    cwd: dir,
+    absolute: true,
+    caseSensitiveMatch: false,
+  });
+  return files.sort();
 }
