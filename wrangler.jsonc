@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "webp-converter-web",
+  "name": "webp-converter",
   "assets": {
     "directory": "./packages/web/dist"
   },
